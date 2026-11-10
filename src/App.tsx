@@ -13,12 +13,14 @@ import {
   editHistory,
   editStateForImage,
   hasEdits,
+  replaceCutout,
   sessionStore,
   type BrushStroke,
   type CropRect,
   type EditDelta,
   type EditState,
   type ExportFormat,
+  type MatteSource,
   type SourceKind,
 } from './domain'
 import { firstImageFile, ingestImage, IngestError } from './image/ingest'
@@ -51,6 +53,8 @@ export default function App() {
 
   const [removeError, setRemoveError] = useState<string | null>(null)
   const removingFor = useRef<string | null>(null)
+  /** A cutout being redone with another method (AI subject ↔ background colour). */
+  const [matting, setMatting] = useState<{ imageId: string; source: MatteSource } | null>(null)
 
   // FR-43: a Done batch item open in the editor. While set it replaces the single-image flow; the queue is kept.
   const [batchEdit, setBatchEdit] = useState<{ jobId: string; itemId: string } | null>(null)
@@ -188,6 +192,25 @@ export default function App() {
         if (removingFor.current === image.id) removingFor.current = null
       })
   }, [current, tinyModel, cutout, removeError])
+
+  /**
+   * Redo the current image's cutout with the other method; edits carry over. Choosing the AI model starts from the
+   * quick model again, and the full-model upgrade follows as usual.
+   */
+  const changeMatte = async (source: MatteSource) => {
+    if (!current || batchEdit || matting || tinyModel.status !== 'ready' || cutout?.matteSource === source) return
+    const image = current
+    setMatting({ imageId: image.id, source })
+    try {
+      const result = await removeBackground(tinyModel.handle, image, source)
+      if (!sessionStore.getState().sourceImages[image.id]) return result.cutoutBitmap.close()
+      replaceCutout(sessionStore, result)
+    } catch (e) {
+      setNotice(e instanceof CanvasTooLargeError ? e.message : 'Could not redo the cutout with that method.')
+    } finally {
+      setMatting(null)
+    }
+  }
 
   // Dropping a file anywhere outside the upload area must not navigate the tab away from the app.
   useEffect(() => {
@@ -351,6 +374,8 @@ export default function App() {
                 : () => exportSingle({ image: current, cutout, edit: edit ?? null, background: session.background, format: exportFormat })
             }
             savingToQueue={savingBatchItem}
+            onMatteChange={batchEdit ? undefined : (s) => void changeMatte(s)}
+            matteTarget={matting?.imageId === current.id ? matting.source : null}
           />
         ) : view === 'batch' ? (
           <BatchScreen onBack={() => setView('home')} onOpenItem={openBatchEditor} />

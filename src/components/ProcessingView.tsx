@@ -13,6 +13,7 @@ import {
   type SourceImage,
   createBackgroundSelection,
   type BackgroundSelection,
+  type MatteSource,
 } from '../domain'
 import type { UpgradeState } from '../matte/useFullUpgrade'
 import { EditCanvas, PREVIEW_MAX } from './EditCanvas'
@@ -59,6 +60,10 @@ interface Props {
   exportFormat?: ExportFormat
   onExportFormatChange?: (format: ExportFormat) => void
   onExport?: () => Promise<ExportOutcome>
+  /** Switch the cutout between the AI model and the background colour key (single images only). */
+  onMatteChange?: (source: MatteSource) => void
+  /** The method a cutout is being redone with, while that runs. */
+  matteTarget?: MatteSource | null
 }
 
 /** FR-7 processing state, then the single-image editor once a cutout is ready. */
@@ -93,6 +98,8 @@ export function ProcessingView({
   onRetryUpgrade,
   onBackToQueue,
   savingToQueue = false,
+  onMatteChange,
+  matteTarget = null,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const hasResult = cutout?.status === 'ready'
@@ -138,6 +145,7 @@ export function ProcessingView({
       data-testid="processing-view"
       data-decode-path={image.decodePath}
       data-model-tier={hasResult ? cutout.modelTier : undefined}
+      data-matte-source={hasResult ? cutout.matteSource : undefined}
       data-cutout-size={hasResult ? `${cutout.cutoutBitmap.width}x${cutout.cutoutBitmap.height}` : undefined}
       data-full-model={upgrade.status}
     >
@@ -258,6 +266,9 @@ export function ProcessingView({
             exportFormat={exportFormat}
             onExportFormatChange={onExportFormatChange}
             onExport={onExport}
+            matteSource={matteTarget ?? cutout.matteSource}
+            onMatteChange={onMatteChange}
+            matteBusy={matteTarget !== null}
           />
         )}
       </div>

@@ -1,7 +1,7 @@
 // Full-model upgrade (FR-11–FR-14, NFR-5). Runs only after the tiny cutout is on screen.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { sessionStore, type CutoutResult, type SourceImage } from '../domain'
+import { replaceCutout, sessionStore, type CutoutResult, type SourceImage } from '../domain'
 import { detectCapabilities, detectWebGPU, fullModelAllowed, type Capabilities } from '../model/capabilities'
 import { evictModel, GpuLostError, loadModel, type ModelBackend } from '../model/loader'
 import { removeBackground } from './remove'
@@ -36,8 +36,16 @@ export function useFullUpgrade(image: SourceImage | undefined, tinyCutout: Cutou
   }, [image?.id])
 
   useEffect(() => {
-    if (!image || tinyCutout?.status !== 'ready' || tinyCutout.modelTier !== 'tiny') return
-    const key = `${image.id}:${attempt}`
+    if (!image || tinyCutout?.status !== 'ready') return
+    if (tinyCutout.matteSource === 'color') {
+      // Colour-keyed graphics are exact already: the full model would only make them worse, so it is never fetched.
+      startedFor.current = null // an upgrade still running for an earlier AI cutout is dropped
+      setState({ status: 'idle' })
+      return
+    }
+    if (tinyCutout.modelTier !== 'tiny') return
+    // One run per quick cutout per attempt (a method change produces a new quick cutout for the same image).
+    const key = `${image.id}:${tinyCutout.id}:${attempt}`
     if (startedFor.current === key) return
     startedFor.current = key
     const stillCurrent = () => startedFor.current === key
@@ -59,14 +67,15 @@ export function useFullUpgrade(image: SourceImage | undefined, tinyCutout: Cutou
         if (!stillCurrent()) return
         setState({ status: 'running' })
         const lost = handle.gpuLost?.then((reason) => Promise.reject(new GpuLostError(reason)))
-        const full = await (lost ? Promise.race([removeBackground(handle, image), lost]) : removeBackground(handle, image))
-        // FR-12: replace the tiny result, unless the user moved on meanwhile.
-        if (!stillCurrent() || !sessionStore.getState().sourceImages[image.id]) {
+        const run = removeBackground(handle, image, 'model')
+        const full = await (lost ? Promise.race([run, lost]) : run)
+        // FR-12: replace the tiny result, unless the user moved on (or redid the cutout another way) meanwhile.
+        const now = sessionStore.getState()
+        if (!stillCurrent() || !now.sourceImages[image.id] || !now.cutouts[tinyCutout.id]) {
           full.cutoutBitmap.close()
           return
         }
-        sessionStore.create('cutouts', full)
-        if (sessionStore.getState().cutouts[tinyCutout.id]) sessionStore.remove('cutouts', tinyCutout.id)
+        replaceCutout(sessionStore, full) // edits made on the tiny result carry over
         setState({ status: 'done' })
       } catch (e) {
         if (e instanceof GpuLostError) {

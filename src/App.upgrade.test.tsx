@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import { createCutoutResult, sessionReset, sessionStore, type SourceImage } from './domain'
+import { createCutoutResult, editStateForImage, sessionReset, sessionStore, type SourceImage } from './domain'
 import { detectCapabilities, detectWebGPU } from './model/capabilities'
 import { GpuLostError, loadModel, ModelLoadError, type ModelHandle } from './model/loader'
 import { removeBackground } from './matte/remove'
@@ -65,6 +65,25 @@ describe('full-model upgrade (FR-11–FR-14, NFR-5)', () => {
     expect(view().dataset.fullModel).toBe('done')
     expect(storedTiers()).toEqual(['full']) // tiny replaced
     expect(screen.queryByTestId('phase')).toBeNull()
+  })
+
+  it('edits made on the tiny result while the full model loads carry over to the full cutout', async () => {
+    let finishFull!: (h: ModelHandle) => void
+    vi.mocked(loadModel).mockImplementation(async (tier) =>
+      tier === 'tiny' ? tinyHandle : new Promise<ModelHandle>((r) => (finishFull = r)),
+    )
+    await uploadAndAwaitTiny()
+    await screen.findByRole('complementary', { name: 'Editing tools' })
+    fireEvent.change(screen.getByRole('slider', { name: 'Edge softness' }), { target: { value: '30' } })
+    const imageId = Object.keys(sessionStore.getState().sourceImages)[0]
+    const before = editStateForImage(sessionStore.getState(), imageId)!
+
+    await waitFor(() => expect(finishFull).toBeDefined())
+    await act(async () => finishFull(fullHandle('webgpu')))
+    await waitFor(() => expect(view().dataset.modelTier).toBe('full'))
+    const after = editStateForImage(sessionStore.getState(), imageId)!
+    expect(after).toMatchObject({ id: before.id, edgeValue: 30 })
+    expect(Object.keys(sessionStore.getState().editStates)).toEqual([before.id])
   })
 
   it('uses multi-threaded WASM when no WebGPU adapter exists', async () => {

@@ -10,6 +10,12 @@ export type DecodePath = (typeof DECODE_PATHS)[number]
 export const MODEL_TIERS = ['tiny', 'full'] as const
 export type ModelTier = (typeof MODEL_TIERS)[number]
 
+/** How a cutout's matte was made: the AI model, or a colour key of a flat background (line art, logos). */
+export const MATTE_SOURCES = ['model', 'color'] as const
+export type MatteSource = (typeof MATTE_SOURCES)[number]
+/** Requested matting: 'auto' picks the colour key for flat graphics and the model for everything else. */
+export type MatteMode = 'auto' | MatteSource
+
 export const CUTOUT_STATUSES = ['pending', 'ready', 'failed'] as const
 export type CutoutStatus = (typeof CUTOUT_STATUSES)[number]
 
@@ -31,6 +37,9 @@ export type ExportFormat = (typeof EXPORT_FORMATS)[number]
 /** PRD ranges and limits. */
 export const BRUSH_RADIUS_MIN = 1
 export const BRUSH_RADIUS_MAX = 200
+export const BRUSH_TOLERANCE_MIN = 1
+export const BRUSH_TOLERANCE_MAX = 100
+export const BRUSH_TOLERANCE_DEFAULT = 30
 export const EDGE_VALUE_MIN = 0
 export const EDGE_VALUE_MAX = 100
 export const EDGE_VALUE_DEFAULT = 50
@@ -55,6 +64,7 @@ export interface CutoutResult {
   id: string
   sourceImageId: string // -> SourceImage.id
   modelTier: ModelTier
+  matteSource: MatteSource
   cutoutBitmap: ImageBitmap
   alphaMask: Uint8ClampedArray
   status: CutoutStatus
@@ -72,6 +82,11 @@ export interface BrushStroke {
   mode: BrushMode
   radius: number
   points: Array<{ x: number; y: number }>
+  /**
+   * Edge-aware stroke: only pixels whose source colour is within `tolerance` of `color` (the colour under the
+   * stroke's first point) are affected, so the brush stops at edges. Absent for a plain brush stroke.
+   */
+  edge?: { color: [number, number, number]; tolerance: number }
 }
 
 export interface EditState {
@@ -79,6 +94,8 @@ export interface EditState {
   cutoutId: string // -> CutoutResult.id
   brushMode: BrushMode
   brushRadius: number // image pixels, 1–200
+  brushEdgeAware: boolean // edge-aware brush on/off (tool setting, not an edit)
+  brushTolerance: number // 1–100, colour tolerance of the edge-aware brush
   strokes: BrushStroke[]
   edgeValue: number // 0–100, default 50
   crop: CropRect | null

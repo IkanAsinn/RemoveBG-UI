@@ -439,6 +439,28 @@ kbd {
   outline-offset: 1px;
 }
 
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.check input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.tool-group .check + .hint,
+.tool-group .segmented + .hint {
+  margin-top: 6px;
+}
+
 .slider {
   display: flex;
   flex-direction: column;
@@ -532,6 +554,20 @@ kbd {
 
 .brush-cursor[hidden] {
   display: none;
+}
+
+/* Edge-aware brush: a dot marks the point whose colour the stroke keys on. */
+.brush-cursor.is-edge-aware::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  margin: -2.5px 0 0 -2.5px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.65);
 }
 
 /* Crop tool (FR-20) */

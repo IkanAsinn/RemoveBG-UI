@@ -95,6 +95,24 @@ Limits of the automated checks:
 - Non-text contrast of focus rings (WCAG 1.4.11) is not checked by axe. The focus colour is `#1f5eff` on `#f7f7f5` in light (5.1:1) and `#8fb0ff` on `#141414` in dark.
 - Painting erase and restore strokes on the canvas needs a pointer. There is no keyboard brush. Every other control has a keyboard path.
 
+## Flat graphics and the edge-aware brush
+
+The AI models segment one salient subject. They are unreliable on images with no single subject, such as a page of
+line art: the gaps between lines can come out half transparent, and white lines on black can disappear. Images that
+are a uniform background plus a few flat ink colours are therefore keyed by colour instead (`src/matte/colorKey.ts`),
+and the full model is never fetched for them. The editor's **Cutout** switch redoes the cutout with the other method.
+
+`e2e/fixtures/photo.png` is a shaded sphere on a gradient, so it stays on the AI path. `e2e/fixtures/lines.png` is wavy
+black line art on white.
+
+| Check | Where |
+| --- | --- |
+| Line art (black on white, white on black, noisy paper, multi-colour logo) is keyed; gaps 0, ink 255, anti-aliasing partial | `src/matte/colorKey.test.ts` |
+| Vignettes, soft blobs, textured subjects and mixed borders stay on the AI model | `src/matte/colorKey.test.ts` |
+| A colour-keyed image never fetches the full model; switching methods keeps edits; full upgrade follows an AI switch | `src/App.matte.test.tsx`, `e2e/line-art.spec.ts` |
+| Edits made while the full model loads carry over to the full cutout | `src/App.upgrade.test.tsx` |
+| Edge-aware brush only erases/restores colours like the stroke's first point, and replays identically | `src/matte/applyEdits.test.ts`, `e2e/line-art.spec.ts` |
+
 ## Browser matrix, memory and security (T-028)
 
 | Check | Where |

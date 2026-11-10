@@ -3,7 +3,21 @@ import { BackgroundPanel } from './BackgroundPanel'
 import { ExportPanel } from './ExportPanel'
 import type { ExportOutcome } from '../export/single'
 import type { FormatSupport } from '../export/encode'
-import { type BackgroundSelection, BRUSH_RADIUS_MAX, BRUSH_RADIUS_MIN, canApplyCrop, CROP_MIN_SIZE, EDGE_VALUE_MAX, EDGE_VALUE_MIN, type CropRect, type EditState, type ExportFormat } from '../domain'
+import {
+  type BackgroundSelection,
+  BRUSH_RADIUS_MAX,
+  BRUSH_RADIUS_MIN,
+  BRUSH_TOLERANCE_MAX,
+  BRUSH_TOLERANCE_MIN,
+  canApplyCrop,
+  CROP_MIN_SIZE,
+  EDGE_VALUE_MAX,
+  EDGE_VALUE_MIN,
+  type CropRect,
+  type EditState,
+  type ExportFormat,
+  type MatteSource,
+} from '../domain'
 
 interface Props {
   edit: EditState
@@ -11,7 +25,7 @@ interface Props {
   canUndo: boolean
   canRedo: boolean
   edited: boolean
-  onChange: (patch: Partial<Pick<EditState, 'brushMode' | 'brushRadius' | 'edgeValue'>>) => void
+  onChange: (patch: Partial<Pick<EditState, 'brushMode' | 'brushRadius' | 'brushEdgeAware' | 'brushTolerance' | 'edgeValue'>>) => void
   onUndo: () => void
   onRedo: () => void
   onReset: () => void
@@ -30,6 +44,16 @@ interface Props {
   onExportFormatChange?: (format: ExportFormat) => void
   /** Single-image download; absent for batch items (saved through the batch ZIP). */
   onExport?: () => Promise<ExportOutcome>
+  /** How the current cutout was made; with `onMatteChange` the user can redo it the other way. */
+  matteSource?: MatteSource
+  onMatteChange?: (source: MatteSource) => void
+  /** A cutout is being recomputed after a method change. */
+  matteBusy?: boolean
+}
+
+const MATTE_LABELS: Record<MatteSource, { label: string; hint: string }> = {
+  model: { label: 'AI subject', hint: 'Finds the main subject. Best for photos.' },
+  color: { label: 'Background colour', hint: 'Removes the flat background colour everywhere. Best for logos, line art and text.' },
 }
 
 /**
@@ -58,6 +82,9 @@ export function EditorPanel({
   exportFormat = 'png',
   onExportFormatChange,
   onExport,
+  matteSource,
+  onMatteChange,
+  matteBusy = false,
 }: Props) {
   const applicable = cropDraft ? canApplyCrop(cropDraft) : false
   // Value at the start of the current edge gesture; the whole drag becomes one history step.
@@ -100,6 +127,30 @@ export function EditorPanel({
         </div>
       </section>
 
+      {matteSource && onMatteChange && (
+        <section className="tool-group" aria-labelledby="tools-cutout" data-testid="cutout-method">
+          <h2 id="tools-cutout">Cutout</h2>
+          <div className="segmented" role="radiogroup" aria-label="Cutout method" aria-busy={matteBusy}>
+            {(['model', 'color'] as const).map((source) => (
+              <label key={source} className={`segment${matteSource === source ? ' is-selected' : ''}`}>
+                <input
+                  type="radio"
+                  name="cutout-method"
+                  value={source}
+                  checked={matteSource === source}
+                  disabled={matteBusy}
+                  onChange={() => onMatteChange(source)}
+                />
+                {MATTE_LABELS[source].label}
+              </label>
+            ))}
+          </div>
+          <p className="hint" aria-live="polite">
+            {matteBusy ? 'Updating cutout…' : MATTE_LABELS[matteSource].hint}
+          </p>
+        </section>
+      )}
+
       <section className="tool-group" aria-labelledby="tools-brush">
         <h2 id="tools-brush">Brush</h2>
         <div className="segmented" role="radiogroup" aria-label="Brush mode">
@@ -129,6 +180,35 @@ export function EditorPanel({
             onChange={(e) => onChange({ brushRadius: Number(e.currentTarget.value) })}
           />
         </label>
+        <label className="check">
+          <input
+            type="checkbox"
+            aria-describedby="edge-aware-hint"
+            checked={edit.brushEdgeAware}
+            onChange={(e) => onChange({ brushEdgeAware: e.currentTarget.checked })}
+          />
+          Auto-detect edges
+        </label>
+        <p id="edge-aware-hint" className="hint">
+          {edit.brushEdgeAware
+            ? `Only ${edit.brushMode === 'erase' ? 'erases' : 'restores'} colours like the one where the stroke starts, so it stops at edges.`
+            : 'Brush affects everything under it.'}
+        </p>
+        {edit.brushEdgeAware && (
+          <label className="slider">
+            <span>
+              Tolerance <output>{edit.brushTolerance}</output>
+            </span>
+            <input
+              type="range"
+              aria-label="Edge tolerance"
+              min={BRUSH_TOLERANCE_MIN}
+              max={BRUSH_TOLERANCE_MAX}
+              value={edit.brushTolerance}
+              onChange={(e) => onChange({ brushTolerance: Number(e.currentTarget.value) })}
+            />
+          </label>
+        )}
       </section>
 
       <section className="tool-group" aria-labelledby="tools-edge">

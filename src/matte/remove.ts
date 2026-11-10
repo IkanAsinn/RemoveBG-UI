@@ -1,8 +1,9 @@
 // LOCAL /matte/remove (FR-10, FR-15, FR-16, NFR-1). Runs entirely in the browser: the only inputs are the
 // in-memory SourceImage and an already-loaded model session. Nothing here performs a network request.
 
-import { createCutoutResult, type CutoutResult, type SourceImage } from '../domain'
+import { createCutoutResult, type CutoutResult, type MatteMode, type SourceImage } from '../domain'
 import type { ModelHandle } from '../model/loader'
+import { colorKeyMatte, detectFlatBackground } from './colorKey'
 import { matteToAlphaRgba, rgbaToInputTensor } from './tensor'
 
 export class CanvasTooLargeError extends Error {
@@ -67,8 +68,38 @@ export async function cutoutBitmapFromAlpha(source: CanvasImageSource, alphaMask
   return cutoutFromMask(source, mask, W, H)
 }
 
-/** Produce a full-resolution cutout for `source` with the given model tier. */
-export async function removeBackground(handle: ModelHandle, source: SourceImage): Promise<CutoutResult> {
+/**
+ * Colour-key cutout for flat graphics (line art, logos, text). Returns null when `mode` is 'auto' and the image does
+ * not look like a flat graphic, so the caller falls back to the model.
+ */
+async function colorKeyCutout(handle: ModelHandle, source: SourceImage, mode: MatteMode): Promise<CutoutResult | null> {
+  const { width: W, height: H } = source
+  const { ctx } = canvas2d(W, H, { willReadFrequently: true })
+  ctx.drawImage(source.decodedBitmap, 0, 0)
+  const rgba = ctx.getImageData(0, 0, W, H).data
+  const key = detectFlatBackground(rgba, W, H, mode === 'color')
+  if (!key) return null
+  const alphaMask = colorKeyMatte(rgba, W, H, key)
+  return createCutoutResult({
+    sourceImageId: source.id,
+    modelTier: handle.tier,
+    matteSource: 'color',
+    cutoutBitmap: await cutoutBitmapFromAlpha(source.decodedBitmap, alphaMask, W, H),
+    alphaMask,
+    status: 'ready',
+  })
+}
+
+/**
+ * Produce a full-resolution cutout for `source`. In 'auto' mode, flat graphics on a uniform background are keyed by
+ * colour (the salient-object models are unreliable when there is no single subject, e.g. a page of line art) and
+ * everything else goes through the model; 'model' and 'color' force one path.
+ */
+export async function removeBackground(handle: ModelHandle, source: SourceImage, mode: MatteMode = 'auto'): Promise<CutoutResult> {
+  if (mode !== 'model') {
+    const keyed = await colorKeyCutout(handle, source, mode)
+    if (keyed) return keyed
+  }
   const { width: W, height: H } = source
   const matte = await runMatte(handle, source)
 
@@ -85,6 +116,7 @@ export async function removeBackground(handle: ModelHandle, source: SourceImage)
   return createCutoutResult({
     sourceImageId: source.id,
     modelTier: handle.tier,
+    matteSource: 'model',
     cutoutBitmap,
     alphaMask,
     status: 'ready',

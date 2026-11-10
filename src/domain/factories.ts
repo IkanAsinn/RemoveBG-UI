@@ -1,6 +1,9 @@
 import {
   BRUSH_RADIUS_MAX,
   BRUSH_RADIUS_MIN,
+  BRUSH_TOLERANCE_DEFAULT,
+  BRUSH_TOLERANCE_MAX,
+  BRUSH_TOLERANCE_MIN,
   EDGE_VALUE_DEFAULT,
   EDGE_VALUE_MAX,
   EDGE_VALUE_MIN,
@@ -18,6 +21,7 @@ export const newId = (): string => crypto.randomUUID()
 
 export const clamp = (n: number, min: number, max: number): number => Math.min(max, Math.max(min, n))
 export const clampBrushRadius = (r: number): number => clamp(Math.round(r), BRUSH_RADIUS_MIN, BRUSH_RADIUS_MAX)
+export const clampBrushTolerance = (t: number): number => clamp(Math.round(t), BRUSH_TOLERANCE_MIN, BRUSH_TOLERANCE_MAX)
 export const clampEdgeValue = (v: number): number => clamp(Math.round(v), EDGE_VALUE_MIN, EDGE_VALUE_MAX)
 
 export function createSourceImage(init: Omit<SourceImage, 'id'> & { id?: string }): SourceImage {
@@ -27,7 +31,7 @@ export function createSourceImage(init: Omit<SourceImage, 'id'> & { id?: string 
 export function createCutoutResult(
   init: Pick<CutoutResult, 'sourceImageId' | 'modelTier' | 'cutoutBitmap' | 'alphaMask'> & Partial<CutoutResult>,
 ): CutoutResult {
-  return { status: 'pending', errorCode: null, ...init, id: init.id ?? newId() }
+  return { status: 'pending', errorCode: null, matteSource: 'model', ...init, id: init.id ?? newId() }
 }
 
 export function createEditState(cutoutId: string, init: Partial<Omit<EditState, 'cutoutId'>> = {}): EditState {
@@ -37,6 +41,8 @@ export function createEditState(cutoutId: string, init: Partial<Omit<EditState, 
     crop: null,
     ...init,
     brushRadius: clampBrushRadius(init.brushRadius ?? 30),
+    brushEdgeAware: init.brushEdgeAware ?? false,
+    brushTolerance: clampBrushTolerance(init.brushTolerance ?? BRUSH_TOLERANCE_DEFAULT),
     edgeValue: clampEdgeValue(init.edgeValue ?? EDGE_VALUE_DEFAULT),
     id: init.id ?? newId(),
     cutoutId,

@@ -273,8 +273,11 @@ export function EditCanvas({ image, cutout, edit, background, onStroke, cropDraf
     if (e.button !== 0 || !engine.current || cropping) return
     e.preventDefault()
     e.currentTarget.setPointerCapture?.(e.pointerId)
-    const { brushMode, brushRadius } = latest.current.edit
-    live.current = { mode: brushMode, radius: brushRadius, points: [] }
+    const { brushMode, brushRadius, brushEdgeAware, brushTolerance } = latest.current.edit
+    const stroke: BrushStroke = { mode: brushMode, radius: brushRadius, points: [] }
+    // Edge-aware brush: key on the colour under the first point (erase on the background, restore on the subject).
+    if (brushEdgeAware) stroke.edge = { color: engine.current.editor.colorAt(toImage(e.clientX, e.clientY)), tolerance: brushTolerance }
+    live.current = stroke
     addPoint(e)
     showCursor(e.clientX, e.clientY)
   }
@@ -324,6 +327,7 @@ export function EditCanvas({ image, cutout, edit, background, onStroke, cropDraf
         aria-label={`Background removed: ${image.fileName}`}
         data-testid="source-preview"
         data-brush={edit.brushMode}
+        data-brush-edges={edit.brushEdgeAware ? 'on' : 'off'}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endStroke}
@@ -332,7 +336,7 @@ export function EditCanvas({ image, cutout, edit, background, onStroke, cropDraf
           if (!live.current) hideCursor()
         }}
       />
-      <div ref={cursorRef} className={`brush-cursor is-${edit.brushMode}`} data-testid="brush-cursor" aria-hidden="true" hidden />
+      <div ref={cursorRef} className={`brush-cursor is-${edit.brushMode}${edit.brushEdgeAware ? ' is-edge-aware' : ''}`} data-testid="brush-cursor" aria-hidden="true" hidden />
       {cropDraft && (
         <CropOverlay
           canvasRef={canvasRef}

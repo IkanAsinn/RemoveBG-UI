@@ -156,3 +156,67 @@ describe('shared pipeline (FR-19 preview = export)', () => {
     expect(ed.mask[3 * W + 5]).toBe(255)
   })
 })
+
+describe('edge-aware brush', () => {
+  // Left half white, right half black: a "line" edge at x = 32.
+  const source = () => {
+    const rgba = new Uint8ClampedArray(W * H * 4)
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        const i = (y * W + x) * 4
+        rgba[i] = rgba[i + 1] = rgba[i + 2] = x < 32 ? 255 : 0
+        rgba[i + 3] = 255
+      }
+    return rgba
+  }
+  const edgeStroke = (mode: BrushStroke['mode'], color: [number, number, number], ...pts: Array<[number, number]>): BrushStroke => ({
+    ...stroke(mode, 20, ...pts),
+    edge: { color, tolerance: 30 },
+  })
+
+  it('erase only removes colours like the sampled one and stops at the edge', () => {
+    const m = filled(255)
+    stampSegment(m, W, H, { x: 28, y: 24 }, { x: 28, y: 24 }, 20, 'erase', { rgba: source(), color: [255, 255, 255], tolerance: 30 })
+    expect(at(m, 20, 24)).toBe(0) // white under the brush: erased
+    expect(at(m, 31, 24)).toBe(0)
+    expect(at(m, 32, 24)).toBe(255) // black under the same brush: kept
+    expect(at(m, 40, 24)).toBe(255)
+  })
+
+  it('restore only brings back colours like the sampled one', () => {
+    const m = filled(0)
+    stampSegment(m, W, H, { x: 34, y: 24 }, { x: 34, y: 24 }, 20, 'restore', { rgba: source(), color: [0, 0, 0], tolerance: 30 })
+    expect(at(m, 40, 24)).toBe(255)
+    expect(at(m, 28, 24)).toBe(0)
+  })
+
+  it('repeated dabs do not push partially matching pixels further', () => {
+    const rgba = source()
+    for (let y = 0; y < H; y++) rgba[(y * W + 31) * 4] = rgba[(y * W + 31) * 4 + 1] = rgba[(y * W + 31) * 4 + 2] = 150 // grey edge pixel
+    const once = filled(255)
+    const many = filled(255)
+    const guide = { rgba, color: [255, 255, 255] as [number, number, number], tolerance: 30 }
+    stampSegment(once, W, H, { x: 26, y: 24 }, { x: 26, y: 24 }, 15, 'erase', guide)
+    for (let k = 0; k < 10; k++) stampSegment(many, W, H, { x: 26, y: 24 }, { x: 26, y: 24 }, 15, 'erase', guide)
+    expect(at(once, 31, 24)).toBeGreaterThan(0)
+    expect(at(many, 31, 24)).toBe(at(once, 31, 24))
+  })
+
+  it('the editor samples source colours and replays edge-aware strokes identically (undo / rebuild)', () => {
+    const editor = new MaskEditor(W, H, source(), filled(255))
+    expect(editor.colorAt({ x: 5.7, y: 3.2 })).toEqual([255, 255, 255])
+    expect(editor.colorAt({ x: 50, y: 3 })).toEqual([0, 0, 0])
+    const s = edgeStroke('erase', editor.colorAt({ x: 28, y: 24 }), [28, 24], [28, 30])
+    for (let i = 0; i < s.points.length; i++) editor.stamp(s, i)
+    editor.commit([s])
+    const live = new Uint8ClampedArray(editor.mask)
+    expect(at(live, 25, 24)).toBe(0)
+    expect(at(live, 35, 24)).toBe(255)
+    editor.rebuild()
+    expect(editor.mask).toEqual(live)
+    // Without the source colours (applyStrokes on a bare mask), the same stroke acts as a plain brush.
+    const plain = filled(255)
+    applyStrokes(plain, W, H, [s])
+    expect(at(plain, 35, 24)).toBe(0)
+  })
+})
