@@ -1,0 +1,40 @@
+{
+  "name": "removebg-ui",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "models:fetch": "node scripts/models.mjs fetch",
+    "models:check": "node scripts/models.mjs check",
+    "predev": "npm run models:check",
+    "prebuild": "npm run models:check",
+    "e2e": "playwright test",
+    "audit:dist": "node scripts/audit-dist.mjs"
+  },
+  "dependencies": {
+    "libheif-js": "^1.23.5",
+    "onnxruntime-web": "1.31.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "^1.64.1",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "jsdom": "^31.0.0",
+    "oxlint": "^1.90.0",
+    "typescript": "~7.0.2",
+    "vite": "^8.3.6",
+    "vitest": "^5.1.0"
+  }
+}

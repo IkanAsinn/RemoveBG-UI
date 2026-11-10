@@ -1,0 +1,12 @@
+.git
+.github
+node_modules
+dist
+public/models
+.playwright-mcp
+assets-src
+docs
+*.log
+.env
+.env.*
+!.env.example
